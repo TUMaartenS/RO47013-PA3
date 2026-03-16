@@ -5,6 +5,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import pygame
+import json
 
 # ==================== Robot Model ===================== #
 
@@ -189,6 +190,8 @@ seam_burn_decay = 0.02
 
 # ==================== Main Loop ===================== #
 
+history_dist = []
+history_speed = []
 
 run = True
 while run:
@@ -256,6 +259,9 @@ while run:
     dist_to_seam = np.linalg.norm(endpoint_world - closest)
     speed = np.linalg.norm(dp)
     
+    history_dist.append(dist_to_seam)
+    history_speed.append(speed)
+
     if speed < dwell_speed_threshold and dist_to_seam <= dwell_seam_proximity:
         dwell_time += dt
     else:
@@ -273,9 +279,6 @@ while run:
     except NameError:
         is_dwelling = False
         cell_idx = None
-
-    for ci in range(seam_cells):
-        seam_burn[ci] = max(0.0, seam_burn[ci] - seam_burn_decay * dt)
 
     if is_dwelling and cell_idx is not None:
         seam_burn[cell_idx] = min(1.0, seam_burn[cell_idx] + seam_burn_gain * dt)
@@ -435,7 +438,7 @@ while run:
 
     vel_error_mag = np.linalg.norm(dp_ref - dp)
     if vel_error_mag > burn_threshold:
-        burn_intensity = min(1.0, burn_intensity + 0.02)
+        burn_intensity = min(1.0, burn_intensity + 0.06)
     else:
         burn_intensity = max(0.0, burn_intensity - 0.01)
         
@@ -464,6 +467,38 @@ while run:
         break
 
 pygame.quit()
+
+# ====================   Metrics Calculation & Export ===================== #
+
+if len(history_dist) > 0:
+    history_dist = np.array(history_dist)
+    history_speed = np.array(history_speed)
+    
+    # Calculate RMSE (Root Mean Square Error of the distance to the perfect weld line)
+    rmse = np.sqrt(np.mean(history_dist**2))
+    
+    # Calculate constant velocity deviation (Standard deviation of speed)
+    vel_mean = np.mean(history_speed)
+    vel_std = np.std(history_speed)
+    
+    metrics = {
+        "RMSE_Position_m": float(rmse),
+        "Velocity_Mean_m_s": float(vel_mean),
+        "Velocity_Std_Dev_m_s": float(vel_std)
+    }
+
+    print("\n" + "="*30)
+    print("        WELDING METRICS")
+    print("="*30)
+    print(f" Position RMSE : {rmse:.4f} m")
+    print(f" Mean Velocity : {vel_mean:.4f} m/s")
+    print(f" Velocity Std  : {vel_std:.4f} m/s")
+    print("="*30 + "\n")
+
+    with open("weld_metrics.json", "w") as f:
+        json.dump(metrics, f, indent=4)
+        
+    print(">> Metrics have been successfully saved to 'weld_metrics.json'")
 
 
 
